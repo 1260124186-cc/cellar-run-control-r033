@@ -9,12 +9,14 @@ import (
 func (s *Service) CreateVessel(input CreateVesselInput) (domain.Vessel, error) {
 	now := s.clock.Now()
 	vessel := domain.Vessel{
-		Code:      domain.NormalizeVesselCode(input.Code),
-		CapacityL: input.CapacityL,
-		State:     domain.VesselAvailable,
-		Version:   1,
-		CreatedAt: now,
-		UpdatedAt: now,
+		Code:           domain.NormalizeVesselCode(input.Code),
+		CapacityL:      input.CapacityL,
+		AvailableFrom:  utcPointer(input.AvailableFrom),
+		AvailableUntil: utcPointer(input.AvailableUntil),
+		State:          domain.VesselAvailable,
+		Version:        1,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
 	if err := vessel.Validate(); err != nil {
 		return domain.Vessel{}, err
@@ -94,7 +96,8 @@ func (s *Service) FinishCleaning(
 			return domain.NewError(domain.CodeVesselState,
 				"cleaning vessel has no associated run")
 		}
-		run, ok := snapshot.Runs[*vessel.ActiveRunID]
+		activeRunID := *vessel.ActiveRunID
+		run, ok := snapshot.Runs[activeRunID]
 		if !ok {
 			return domain.NewError(domain.CodeRunNotFound,
 				"associated run was not found")
@@ -103,7 +106,9 @@ func (s *Service) FinishCleaning(
 			return domain.NewError(domain.CodeRunState,
 				"associated run is still open")
 		}
-		if err := vessel.FinishCleaning(s.clock.Now()); err != nil {
+		now := s.clock.Now()
+		next := earliestReservedRun(snapshot, vessel.ID, activeRunID)
+		if err := vessel.FinishCleaning(runIDPointer(next), now); err != nil {
 			return err
 		}
 		snapshot.Vessels[id] = vessel
@@ -125,6 +130,12 @@ func (s *Service) RetireVessel(id string, input VersionInput) (domain.Vessel, er
 		}
 		if err := s.checkExpected(vessel.Version, input.ExpectedVersion); err != nil {
 			return err
+		}
+		for _, run := range snapshot.Runs {
+			if run.VesselID != nil && *run.VesselID == id && runIsOpen(run) {
+				return domain.NewError(domain.CodeVesselState,
+					"vessel has an open run or reservation")
+			}
 		}
 		if err := vessel.Retire(s.clock.Now()); err != nil {
 			return err

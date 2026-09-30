@@ -26,8 +26,10 @@ type VersionInput struct {
 }
 
 type CreateVesselInput struct {
-	Code      string
-	CapacityL float64
+	Code           string
+	CapacityL      float64
+	AvailableFrom  *time.Time
+	AvailableUntil *time.Time
 }
 
 type CreateRunInput struct {
@@ -35,11 +37,27 @@ type CreateRunInput struct {
 	FormulaID      string
 	PlannedVolumeL float64
 	Notes          string
+	PlannedStartAt *time.Time
+	PlannedEndAt   *time.Time
 }
 
 type ReserveRunInput struct {
 	ExpectedVersion *int64
 	VesselID        string
+	PlannedStartAt  *time.Time
+	PlannedEndAt    *time.Time
+}
+
+// RunListQuery filters the run list. A nil bound leaves that side of the
+// time range open; a run matches when its effective occupancy window
+// (actual timestamps first, planned window as fallback) overlaps the range.
+type RunListQuery struct {
+	From *time.Time
+	To   *time.Time
+}
+
+func (q RunListQuery) HasRange() bool {
+	return q.From != nil || q.To != nil
 }
 
 type ObservationInput struct {

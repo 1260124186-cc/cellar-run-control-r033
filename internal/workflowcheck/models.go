@@ -15,19 +15,24 @@ type formulaView struct {
 }
 
 type vesselView struct {
-	ID          string             `json:"id"`
-	State       domain.VesselState `json:"state"`
-	Version     int64              `json:"version"`
-	ActiveRunID *string            `json:"active_run_id"`
+	ID             string             `json:"id"`
+	State          domain.VesselState `json:"state"`
+	Version        int64              `json:"version"`
+	ActiveRunID    *string            `json:"active_run_id"`
+	AvailableFrom  *time.Time         `json:"available_from"`
+	AvailableUntil *time.Time         `json:"available_until"`
 }
 
 type runView struct {
-	ID           string                      `json:"id"`
-	State        domain.RunState             `json:"state"`
-	Version      int64                       `json:"version"`
-	VesselID     *string                     `json:"vessel_id"`
-	Observations []domain.GravityObservation `json:"observations"`
-	Metrics      *domain.RunMetrics          `json:"metrics"`
+	ID             string                      `json:"id"`
+	State          domain.RunState             `json:"state"`
+	Version        int64                       `json:"version"`
+	VesselID       *string                     `json:"vessel_id"`
+	PlannedStartAt *time.Time                  `json:"planned_start_at"`
+	PlannedEndAt   *time.Time                  `json:"planned_end_at"`
+	StartedAt      *time.Time                  `json:"started_at"`
+	Observations   []domain.GravityObservation `json:"observations"`
+	Metrics        *domain.RunMetrics          `json:"metrics"`
 }
 
 type pairView struct {

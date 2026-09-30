@@ -2,13 +2,16 @@ package httpapi
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/1260124186-cc/solo-0016-cellar-run-control/internal/service"
 )
 
 type createVesselRequest struct {
-	Code      string  `json:"code"`
-	CapacityL float64 `json:"capacity_liters"`
+	Code           string     `json:"code"`
+	CapacityL      float64    `json:"capacity_liters"`
+	AvailableFrom  *time.Time `json:"available_from"`
+	AvailableUntil *time.Time `json:"available_until"`
 }
 
 func registerVesselRoutes(mux *http.ServeMux, app *service.Service) {
@@ -18,8 +21,10 @@ func registerVesselRoutes(mux *http.ServeMux, app *service.Service) {
 			return
 		}
 		vessel, err := app.CreateVessel(service.CreateVesselInput{
-			Code:      body.Code,
-			CapacityL: body.CapacityL,
+			Code:           body.Code,
+			CapacityL:      body.CapacityL,
+			AvailableFrom:  body.AvailableFrom,
+			AvailableUntil: body.AvailableUntil,
 		})
 		if err != nil {
 			writeDomainError(response, err)

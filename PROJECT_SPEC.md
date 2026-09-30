@@ -6,9 +6,8 @@ Cellar Run Control is a local Go HTTP service for a small production cellar.
 It coordinates approved formulas, vessel reservation, active fermentation
 runs, gravity observations, conditioning, completion, and vessel release.
 
-The project is a healthy initialization baseline. It contains no intentional
-defects, no model traces, and no automated tests. Verification is intentionally
-deferred to a later engineering task.
+The project is an initialization baseline extended with focused scheduling
+tests. It contains no intentional defects or model traces.
 
 ## Users
 
@@ -48,12 +47,20 @@ States are `draft`, `approved`, and `retired`.
 ### Vessel
 
 A vessel contains an identifier, unique display code, capacity in liters,
-lifecycle state, active run identifier, version, and timestamps.
+optional availability period, lifecycle state, active run identifier, version,
+and timestamps.
 
 States are `available`, `reserved`, `in_use`, `cleaning`, and `retired`.
 
 - Capacity is in the inclusive range 10 to 5000 liters.
-- Only an available vessel can be reserved.
+- An availability period, when present, requires both bounds and its end must
+  be after its start.
+- A reserved run window must fit completely within the vessel availability
+  period and must not overlap another open run on the same vessel.
+- Vessels can hold multiple non-overlapping reservations; the active pointer
+  identifies the nearest reservation or the current run.
+- A vessel without an open schedule entry is available for the first
+  reservation.
 - A reserved or in-use vessel must identify exactly one active run.
 - Completion moves an in-use vessel to cleaning.
 - Cleaning can be finished only when the associated run is complete or
@@ -71,8 +78,13 @@ States are `planned`, `reserved`, `fermenting`, `conditioning`, `completed`,
 and `aborted`.
 
 - Planned volume is greater than zero and cannot exceed vessel capacity.
+- A planned window is absent or contains both bounds, and its estimated end is
+  after its planned start.
+- Reservation can register or replace the planned window; actual start and end
+  timestamps take precedence for occupancy while planned timestamps remain.
+- Half-open overlapping windows are conflicts; adjacent windows are allowed.
 - Only an approved formula may be attached to a run.
-- `planned -> reserved` atomically reserves an available vessel.
+- `planned -> reserved` atomically reserves a non-overlapping vessel window.
 - `reserved -> fermenting` requires that the vessel still belongs to the run.
 - `fermenting -> conditioning` requires at least two observations.
 - `conditioning -> completed` requires at least three observations.
@@ -121,6 +133,7 @@ Public entry points are:
 
 - `POST /v1/vessels`
 - `POST /v1/runs`
+- `GET /v1/runs?from=...&to=...`
 - `POST /v1/runs/{id}/reserve`
 - `POST /v1/runs/{id}/start`
 - `GET /v1/runs/{id}`
@@ -204,11 +217,11 @@ workflow checks use temporary directories.
 
 ## Validation Plan
 
-The baseline declares `testing: deferred` and intentionally contains no unit
-tests, fixtures, integration tests, or browser E2E files. A later verification
-task owns systematic tests for validation boundaries, state transitions,
-numeric calculations, stale revisions, storage failures, and concurrent
-reservation attempts.
+The baseline declared `testing: deferred`. Scheduling now includes focused
+domain and service tests for validation boundaries, state transitions, stale
+revisions, non-overlapping reservations, and range queries. Broader coverage
+of numeric calculations, storage failures, and concurrency remains available
+for a later test task.
 
 The current build command is `go build ./...`. Three bounded production checks
 start the real HTTP handler, issue real JSON requests, check success and failure
@@ -216,6 +229,7 @@ behavior, and exit without external services:
 
 - `go run ./cmd/fermentctl check formula-approval`
 - `go run ./cmd/fermentctl check vessel-run-lifecycle`
+- `go run ./cmd/fermentctl check scheduled-runs`
 - `go run ./cmd/fermentctl check observations-completion`
 
 ## Scope Limits

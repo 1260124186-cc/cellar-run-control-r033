@@ -5,10 +5,8 @@ production cellar. It keeps formula approval, vessel availability, active
 fermentation runs, gravity observations, conditioning, completion metrics, and
 vessel cleaning in one deterministic process.
 
-This repository is a healthy initialization baseline. It has no intentional
-defects and no automated test suite. Tests are intentionally deferred to a
-later engineering task; the production workflow checks in this repository
-remain available for immediate build and behavior verification.
+This repository includes focused automated tests for domain and service
+behavior, along with production workflow checks for end-to-end verification.
 
 ## Requirements
 
@@ -76,7 +74,7 @@ Formula workflow:
 
 Vessel workflow:
 
-- `POST /v1/vessels`
+- `POST /v1/vessels` with optional `available_from` and `available_until`
 - `GET /v1/vessels`
 - `GET /v1/vessels/{id}`
 - `POST /v1/vessels/{id}/finish-cleaning`
@@ -85,9 +83,9 @@ Vessel workflow:
 Run workflow:
 
 - `POST /v1/runs`
-- `GET /v1/runs`
+- `GET /v1/runs` (optional RFC3339 `from` / `to` overlap filters)
 - `GET /v1/runs/{id}`
-- `POST /v1/runs/{id}/reserve`
+- `POST /v1/runs/{id}/reserve` (optional planned window)
 - `POST /v1/runs/{id}/start`
 - `POST /v1/runs/{id}/observations`
 - `POST /v1/runs/{id}/conditioning`
@@ -114,6 +112,7 @@ Run each production workflow check separately:
 ```bash
 go run ./cmd/fermentctl check formula-approval
 go run ./cmd/fermentctl check vessel-run-lifecycle
+go run ./cmd/fermentctl check scheduled-runs
 go run ./cmd/fermentctl check observations-completion
 ```
 
@@ -153,9 +152,9 @@ automated tests or request a focused repair without changing the public API.
 
 ## Test Boundary
 
-This stage does not create unit tests, integration tests, test fixtures, or an
-E2E suite. The later test task owns systematic coverage of validation limits,
-state transitions, concurrency, persistence failures, and numeric edge cases.
+The current tests focus on scheduling windows, conflict detection, stale
+version rejection, plan retention, and stable range queries. Broader coverage
+of persistence failures and numeric edge cases can be added by later work.
 
 ## Scope
 

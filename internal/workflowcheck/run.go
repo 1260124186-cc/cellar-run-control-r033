@@ -36,6 +36,10 @@ func Run(name string) error {
 		if err := vesselRunLifecycle(api); err != nil {
 			return err
 		}
+	case "scheduled-runs":
+		if err := scheduledRuns(api); err != nil {
+			return err
+		}
 	case "observations-completion":
 		if err := observationsCompletion(api); err != nil {
 			return err

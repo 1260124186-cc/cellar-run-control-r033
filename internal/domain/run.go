@@ -21,6 +21,8 @@ type FermentationRun struct {
 	PlannedVolumeL float64              `json:"planned_volume_liters"`
 	Notes          string               `json:"notes,omitempty"`
 	State          RunState             `json:"state"`
+	PlannedStartAt *time.Time           `json:"planned_start_at,omitempty"`
+	PlannedEndAt   *time.Time           `json:"planned_end_at,omitempty"`
 	StartedAt      *time.Time           `json:"started_at,omitempty"`
 	EndedAt        *time.Time           `json:"ended_at,omitempty"`
 	Observations   []GravityObservation `json:"observations"`
@@ -36,6 +38,14 @@ func (r FermentationRun) Clone() FermentationRun {
 	if r.VesselID != nil {
 		value := *r.VesselID
 		cloned.VesselID = &value
+	}
+	if r.PlannedStartAt != nil {
+		value := *r.PlannedStartAt
+		cloned.PlannedStartAt = &value
+	}
+	if r.PlannedEndAt != nil {
+		value := *r.PlannedEndAt
+		cloned.PlannedEndAt = &value
 	}
 	if r.StartedAt != nil {
 		value := *r.StartedAt
@@ -64,15 +74,34 @@ func (r FermentationRun) Validate() error {
 		return FieldError(CodeInvalidInput, "notes",
 			"must not exceed 1000 characters")
 	}
+	if err := ValidatePlannedWindow(r.PlannedStartAt, r.PlannedEndAt); err != nil {
+		return err
+	}
 	return nil
 }
 
-func (r *FermentationRun) ReserveVessel(vesselID string, now time.Time) error {
+// ReserveVessel attaches a vessel and registers the planned window the
+// reservation was confirmed with. A nil window keeps any window the run
+// registered earlier; a non-nil window replaces it.
+func (r *FermentationRun) ReserveVessel(
+	vesselID string,
+	plannedStart, plannedEnd *time.Time,
+	now time.Time,
+) error {
 	if r.State != RunPlanned {
 		return NewError(CodeRunState, "only a planned run can reserve a vessel")
 	}
+	if err := ValidatePlannedWindow(plannedStart, plannedEnd); err != nil {
+		return err
+	}
 	value := vesselID
 	r.VesselID = &value
+	if plannedStart != nil && plannedEnd != nil {
+		start := plannedStart.UTC()
+		end := plannedEnd.UTC()
+		r.PlannedStartAt = &start
+		r.PlannedEndAt = &end
+	}
 	r.State = RunReserved
 	r.UpdatedAt = now.UTC()
 	r.Version++
@@ -80,7 +109,7 @@ func (r *FermentationRun) ReserveVessel(vesselID string, now time.Time) error {
 }
 
 func (r *FermentationRun) StartFermentation(now time.Time) error {
-	if r.State != RunReserved || r.VesselID == nil {
+	if r.State != RunReserved {
 		return NewError(CodeRunState, "only a reserved run can start fermentation")
 	}
 	stamp := now.UTC()

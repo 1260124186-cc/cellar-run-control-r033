@@ -4,18 +4,23 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/1260124186-cc/solo-0016-cellar-run-control/internal/domain"
 	"github.com/1260124186-cc/solo-0016-cellar-run-control/internal/service"
 )
 
 type createRunRequest struct {
-	Code           string  `json:"code"`
-	FormulaID      string  `json:"formula_id"`
-	PlannedVolumeL float64 `json:"planned_volume_liters"`
-	Notes          string  `json:"notes"`
+	Code           string     `json:"code"`
+	FormulaID      string     `json:"formula_id"`
+	PlannedVolumeL float64    `json:"planned_volume_liters"`
+	Notes          string     `json:"notes"`
+	PlannedStartAt *time.Time `json:"planned_start_at"`
+	PlannedEndAt   *time.Time `json:"planned_end_at"`
 }
 
 type reserveRunRequest struct {
-	VesselID string `json:"vessel_id"`
+	VesselID       string     `json:"vessel_id"`
+	PlannedStartAt *time.Time `json:"planned_start_at"`
+	PlannedEndAt   *time.Time `json:"planned_end_at"`
 }
 
 type observationRequest struct {
@@ -24,6 +29,28 @@ type observationRequest struct {
 	TemperatureC float64   `json:"temperature_c"`
 	ObservedAt   time.Time `json:"observed_at"`
 	Note         string    `json:"note"`
+}
+
+func runListQuery(request *http.Request) (service.RunListQuery, error) {
+	var query service.RunListQuery
+	values := request.URL.Query()
+	for _, name := range []string{"from", "to"} {
+		raw := values.Get(name)
+		if raw == "" {
+			continue
+		}
+		parsed, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return query, domain.FieldError(domain.CodeInvalidInput, name,
+				"must be an RFC3339 timestamp")
+		}
+		if name == "from" {
+			query.From = &parsed
+		} else {
+			query.To = &parsed
+		}
+	}
+	return query, nil
 }
 
 func registerRunRoutes(mux *http.ServeMux, app *service.Service) {
@@ -37,6 +64,8 @@ func registerRunRoutes(mux *http.ServeMux, app *service.Service) {
 			FormulaID:      body.FormulaID,
 			PlannedVolumeL: body.PlannedVolumeL,
 			Notes:          body.Notes,
+			PlannedStartAt: body.PlannedStartAt,
+			PlannedEndAt:   body.PlannedEndAt,
 		})
 		if err != nil {
 			writeDomainError(response, err)
@@ -45,8 +74,12 @@ func registerRunRoutes(mux *http.ServeMux, app *service.Service) {
 		writeJSON(response, http.StatusCreated, run)
 	})
 
-	mux.HandleFunc("GET /v1/runs", func(response http.ResponseWriter, _ *http.Request) {
-		runs, err := app.ListRuns()
+	mux.HandleFunc("GET /v1/runs", func(response http.ResponseWriter, request *http.Request) {
+		query, err := runListQuery(request)
+		if !handleDecode(response, err) {
+			return
+		}
+		runs, err := app.ListRuns(query)
 		if err != nil {
 			writeDomainError(response, err)
 			return
@@ -75,6 +108,8 @@ func registerRunRoutes(mux *http.ServeMux, app *service.Service) {
 		run, vessel, err := app.ReserveRun(request.PathValue("id"), service.ReserveRunInput{
 			ExpectedVersion: expected,
 			VesselID:        body.VesselID,
+			PlannedStartAt:  body.PlannedStartAt,
+			PlannedEndAt:    body.PlannedEndAt,
 		})
 		if err != nil {
 			writeDomainError(response, err)
