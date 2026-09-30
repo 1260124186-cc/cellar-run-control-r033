@@ -85,6 +85,7 @@ func statusForCode(code domain.Code) int {
 		domain.CodeFormulaInUse, domain.CodeVesselConflict,
 		domain.CodeVesselUnavailable, domain.CodeVesselState,
 		domain.CodeRunConflict, domain.CodeRunState,
+		domain.CodeScheduleConflict,
 		domain.CodeObservationConflict:
 		return http.StatusConflict
 	case domain.CodeRevisionConflict:

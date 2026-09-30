@@ -20,6 +20,7 @@ const (
 	CodeRunNotFound         Code = "run_not_found"
 	CodeRunConflict         Code = "run_code_conflict"
 	CodeRunState            Code = "invalid_run_state"
+	CodeScheduleConflict    Code = "schedule_conflict"
 	CodeObservationConflict Code = "observation_conflict"
 	CodeRevisionConflict    Code = "revision_conflict"
 	CodeStorage             Code = "storage_error"

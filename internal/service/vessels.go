@@ -107,7 +107,8 @@ func (s *Service) FinishCleaning(
 			return err
 		}
 		snapshot.Vessels[id] = vessel
-		updated = vessel
+		recomputeVesselBooking(snapshot, id)
+		updated = snapshot.Vessels[id]
 		return nil
 	})
 	if err != nil {

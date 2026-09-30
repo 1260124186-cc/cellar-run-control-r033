@@ -31,10 +31,13 @@ type CreateVesselInput struct {
 }
 
 type CreateRunInput struct {
-	Code           string
-	FormulaID      string
-	PlannedVolumeL float64
-	Notes          string
+	Code             string
+	FormulaID        string
+	PlannedVolumeL   float64
+	Notes            string
+	PlannedStartAt   *time.Time
+	StartWindowEndAt *time.Time
+	PlannedEndAt     *time.Time
 }
 
 type ReserveRunInput struct {

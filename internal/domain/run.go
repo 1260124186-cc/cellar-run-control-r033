@@ -14,20 +14,31 @@ const (
 )
 
 type FermentationRun struct {
-	ID             string               `json:"id"`
-	Code           string               `json:"code"`
-	FormulaID      string               `json:"formula_id"`
-	VesselID       *string              `json:"vessel_id,omitempty"`
-	PlannedVolumeL float64              `json:"planned_volume_liters"`
-	Notes          string               `json:"notes,omitempty"`
-	State          RunState             `json:"state"`
-	StartedAt      *time.Time           `json:"started_at,omitempty"`
-	EndedAt        *time.Time           `json:"ended_at,omitempty"`
-	Observations   []GravityObservation `json:"observations"`
-	Metrics        *RunMetrics          `json:"metrics,omitempty"`
-	Version        int64                `json:"version"`
-	CreatedAt      time.Time            `json:"created_at"`
-	UpdatedAt      time.Time            `json:"updated_at"`
+	ID               string               `json:"id"`
+	Code             string               `json:"code"`
+	FormulaID        string               `json:"formula_id"`
+	VesselID         *string              `json:"vessel_id,omitempty"`
+	PlannedVolumeL   float64              `json:"planned_volume_liters"`
+	Notes            string               `json:"notes,omitempty"`
+	State            RunState             `json:"state"`
+	PlannedStartAt   *time.Time           `json:"planned_start_at,omitempty"`
+	StartWindowEndAt *time.Time           `json:"start_window_end_at,omitempty"`
+	PlannedEndAt     *time.Time           `json:"planned_end_at,omitempty"`
+	StartedAt        *time.Time           `json:"started_at,omitempty"`
+	EndedAt          *time.Time           `json:"ended_at,omitempty"`
+	Observations     []GravityObservation `json:"observations"`
+	Metrics          *RunMetrics          `json:"metrics,omitempty"`
+	Variance         *ScheduleVariance    `json:"schedule_variance,omitempty"`
+	Version          int64                `json:"version"`
+	CreatedAt        time.Time            `json:"created_at"`
+	UpdatedAt        time.Time            `json:"updated_at"`
+}
+
+// ScheduleVariance compares the planned schedule with the actual start and
+// end. A positive value means the actual event happened later than planned.
+type ScheduleVariance struct {
+	StartDelaySeconds  *int64 `json:"start_delay_seconds,omitempty"`
+	EndVarianceSeconds *int64 `json:"end_variance_seconds,omitempty"`
 }
 
 func (r FermentationRun) Clone() FermentationRun {
@@ -36,6 +47,18 @@ func (r FermentationRun) Clone() FermentationRun {
 	if r.VesselID != nil {
 		value := *r.VesselID
 		cloned.VesselID = &value
+	}
+	if r.PlannedStartAt != nil {
+		value := *r.PlannedStartAt
+		cloned.PlannedStartAt = &value
+	}
+	if r.StartWindowEndAt != nil {
+		value := *r.StartWindowEndAt
+		cloned.StartWindowEndAt = &value
+	}
+	if r.PlannedEndAt != nil {
+		value := *r.PlannedEndAt
+		cloned.PlannedEndAt = &value
 	}
 	if r.StartedAt != nil {
 		value := *r.StartedAt
@@ -48,6 +71,10 @@ func (r FermentationRun) Clone() FermentationRun {
 	if r.Metrics != nil {
 		value := *r.Metrics
 		cloned.Metrics = &value
+	}
+	if r.Variance != nil {
+		value := *r.Variance
+		cloned.Variance = &value
 	}
 	return cloned
 }
@@ -65,6 +92,95 @@ func (r FermentationRun) Validate() error {
 			"must not exceed 1000 characters")
 	}
 	return nil
+}
+
+// HasSchedule reports whether the run carries a planned occupancy window.
+func (r FermentationRun) HasSchedule() bool {
+	return r.PlannedStartAt != nil || r.PlannedEndAt != nil || r.StartWindowEndAt != nil
+}
+
+// ValidateSchedule checks the planned window. now is the reference time used
+// to reject windows that are entirely in the past.
+func (r FermentationRun) ValidateSchedule(now time.Time) error {
+	if !r.HasSchedule() {
+		return nil
+	}
+	if r.PlannedStartAt == nil || r.PlannedEndAt == nil {
+		return FieldError(CodeInvalidInput, "planned_start_at",
+			"planned start and estimated end are required together")
+	}
+	start := r.PlannedStartAt.UTC()
+	end := r.PlannedEndAt.UTC()
+	windowEnd := start
+	if r.StartWindowEndAt != nil {
+		windowEnd = r.StartWindowEndAt.UTC()
+	}
+	if windowEnd.Before(start) {
+		return FieldError(CodeInvalidInput, "start_window_end_at",
+			"must not precede the planned start")
+	}
+	if !end.After(windowEnd) {
+		return FieldError(CodeInvalidInput, "planned_end_at",
+			"must be after the start window")
+	}
+	if start.Before(now.UTC()) {
+		return FieldError(CodeInvalidInput, "planned_start_at",
+			"must not be in the past")
+	}
+	return nil
+}
+
+// OccupancyInterval returns the half-open [start, end) interval during which
+// the run occupies its vessel. A nil end means the occupancy is open-ended
+// (the run has started without a planned end).
+func (r FermentationRun) OccupancyInterval() (start, end *time.Time, ok bool) {
+	if r.StartedAt != nil {
+		start = r.StartedAt
+	} else if r.PlannedStartAt != nil {
+		start = r.PlannedStartAt
+	} else {
+		return nil, nil, false
+	}
+	if r.PlannedEndAt != nil {
+		value := r.PlannedEndAt.UTC()
+		end = &value
+	}
+	return start, end, true
+}
+
+// OverlapsInterval reports whether the given interval overlaps the run's
+// occupancy interval. A nil interval end is treated as positive infinity.
+func (r FermentationRun) OverlapsInterval(otherStart, otherEnd *time.Time) bool {
+	start, end, ok := r.OccupancyInterval()
+	if !ok {
+		return false
+	}
+	if otherStart == nil {
+		return false
+	}
+	if end != nil && !otherStart.Before(*end) {
+		return false
+	}
+	if otherEnd != nil && !start.Before(*otherEnd) {
+		return false
+	}
+	return true
+}
+
+// ScheduleVariance computes the delay between the planned and actual times.
+// It returns nil when the run has not started against a plan.
+func (r FermentationRun) ScheduleVariance() *ScheduleVariance {
+	if r.PlannedStartAt == nil || r.StartedAt == nil {
+		return nil
+	}
+	variance := &ScheduleVariance{}
+	startDelay := int64(r.StartedAt.UTC().Sub(r.PlannedStartAt.UTC()).Seconds())
+	variance.StartDelaySeconds = &startDelay
+	if r.PlannedEndAt != nil && r.EndedAt != nil {
+		endVariance := int64(r.EndedAt.UTC().Sub(r.PlannedEndAt.UTC()).Seconds())
+		variance.EndVarianceSeconds = &endVariance
+	}
+	return variance
 }
 
 func (r *FermentationRun) ReserveVessel(vesselID string, now time.Time) error {
